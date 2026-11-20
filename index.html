@@ -51,6 +51,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}
     <div class="field"><label for="name">Guest name *</label><input id="name" required placeholder="e.g. Anna Zimmermann"></div>
     <div class="two">
       <div class="field"><label for="natSelect">Nationality</label><select id="natSelect"><option value="">Select…</option><option>🇩🇪</option><option>🇨🇭</option><option>🇦🇹</option><option value="__other">Other</option></select><input id="nationality" placeholder="Enter flag, e.g. 🇫🇷" style="display:none"></div>
+    <div class="field"><label for="gtype">Type</label><select id="gtype"><option value="">Select…</option><option>SP</option><option>DOM</option></select></div>
       <div class="field"><label for="room">Room / Villa</label><input id="room" placeholder="e.g. 128"></div>
     </div>
     <div class="two"><div class="field"><label for="checkin">Check-in date</label><input id="checkin" type="date"></div><div class="field"><label for="checkout">Check-out date *</label><input id="checkout" type="date" required></div></div>
@@ -79,10 +80,12 @@ function localDate(d=new Date()){return [d.getFullYear(),String(d.getMonth()+1).
 function dateDiff(date){const a=new Date(date+'T12:00:00'),b=new Date(localDate()+'T12:00:00');return Math.round((a-b)/86400000)}
 function active(g){return dateDiff(g.checkout)>=1}
 function isTalked(g){return g.lastContactDate===localDate()}
+function syncDomNote(){const n=$('notes');let rest=n.value.replace(/SP UPG latest \d{2}\.\d{2}[ \t]*\n?/g,'').replace(/^\s+/,'');const co=$('checkout').value;if($('gtype').value==='DOM'&&co){const d=new Date(co+'T12:00:00');d.setDate(d.getDate()-5);const line='SP UPG latest '+String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');n.value=line+(rest?'\n'+rest:'')}else n.value=rest}
+$('gtype').addEventListener('change',syncDomNote);$('checkout').addEventListener('change',syncDomNote);$('checkout').addEventListener('input',syncDomNote);
 function yesterday(){const d=new Date();d.setDate(d.getDate()-1);return localDate(d)}
 function overdue(g){if(isTalked(g))return false;const base=g.lastContactDate||g.checkin||g.createdAt;return !!base&&dateDiff(base)<=-3}
 function lastTalk(g){const d=g.lastContactDate;if(!d)return overdue(g)?'<div class="talkedago">No talk yet</div>':'';if(d===localDate())return '';const diff=dateDiff(d);const t=diff===-1?'yesterday':d.slice(8,10)+'.'+d.slice(5,7);return '<div class="talkedago">Talked '+t+'</div>'}
-function hl(s=''){return esc(s).replace(/(^|[^A-Za-z0-9])(rep|HM|BD|VIP|anni|anniversary)(?![A-Za-z0-9])/gi,'$1<span class="hl">$2</span>')}
+function hl(s=''){return esc(s).replace(/SP UPG latest \d{2}\.\d{2}/g,m=>'<b>'+m+'</b>').replace(/(^|[^A-Za-z0-9])(rep|HM|BD|VIP|anni|anniversary)(?![A-Za-z0-9])/gi,'$1<span class="hl">$2</span>')}
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function shortDate(s){return new Date(s+'T12:00:00').toLocaleDateString(undefined,{day:'numeric',month:'short'})}
 function dateLabel(s){if(!s)return '';return new Date(s+'T12:00:00').toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})}
@@ -106,10 +109,10 @@ async function purgeOld(){let list=await all();for(const g of list){if(g.checkou
 async function refresh(){await purgeOld();guests=await all();for(const g of guests){if(!g.createdAt&&!g.lastContactDate){g.createdAt=localDate();await save(g)}}render()}
 function openModal(){ $('overlay').classList.add('show');setTimeout(()=>$('name').focus(),100)}
 function closeModal(){$('overlay').classList.remove('show');$('guestForm').reset();setNat('');$('guestId').value='';$('deleteBtn').style.display='none';$('formTitle').textContent='Add guest';$('yWrap').style.display='none'}
-function editGuest(id){let g=guests.find(x=>x.id===id);if(!g)return;$('guestId').value=g.id;$('name').value=g.name;setNat(g.nationality);$('room').value=g.room||'';$('checkin').value=g.checkin||'';$('checkout').value=g.checkout;$('notes').value=g.notes||'';$('formTitle').textContent='Edit guest';$('yWrap').style.display='flex';$('talkedYesterday').checked=(g.contactHistory||[]).includes(yesterday())||g.lastContactDate===yesterday();$('deleteBtn').style.display='block';openModal()}
+function editGuest(id){let g=guests.find(x=>x.id===id);if(!g)return;$('guestId').value=g.id;$('name').value=g.name;setNat(g.nationality);$('room').value=g.room||'';$('gtype').value=g.type||'';$('checkin').value=g.checkin||'';$('checkout').value=g.checkout;$('notes').value=g.notes||'';$('formTitle').textContent='Edit guest';$('yWrap').style.display='flex';$('talkedYesterday').checked=(g.contactHistory||[]).includes(yesterday())||g.lastContactDate===yesterday();$('deleteBtn').style.display='block';openModal()}
 $('addBtn').onclick=()=>{closeModal();openModal()};$('closeModal').onclick=closeModal;$('cancelBtn').onclick=closeModal;
 $('guestForm').onsubmit=async e=>{e.preventDefault();let id=$('guestId').value||crypto.randomUUID();let old=guests.find(g=>g.id===id)||{};if($('checkin').value&&$('checkout').value<$('checkin').value){toast('Check-out must be after check-in');return}let extra={};if(!old.createdAt)extra.createdAt=localDate();if($('yWrap').style.display!=='none'){const y=yesterday();let h=(old.contactHistory||[]).slice();if(old.lastContactDate&&!h.includes(old.lastContactDate))h.push(old.lastContactDate);h=h.filter(x=>x!==y);if($('talkedYesterday').checked)h.push(y);h.sort();extra.contactHistory=h;extra.lastContactDate=h.length?h[h.length-1]:null}
-await save({...old,...extra,id,name:$('name').value.trim(),nationality:$('nationality').value.trim(),room:$('room').value.trim(),checkin:$('checkin').value,checkout:$('checkout').value,notes:$('notes').value.trim()});closeModal();await refresh();toast('Guest saved')};
+await save({...old,...extra,id,name:$('name').value.trim(),nationality:$('nationality').value.trim(),room:$('room').value.trim(),type:$('gtype').value,checkin:$('checkin').value,checkout:$('checkout').value,notes:$('notes').value.trim()});closeModal();await refresh();toast('Guest saved')};
 $('deleteBtn').onclick=async()=>{let id=$('guestId').value;if(id&&confirm('Delete this guest permanently?')){await remove(id);closeModal();await refresh();toast('Guest deleted')}};
 $('overlay').addEventListener('click',e=>{if(e.target===$('overlay'))closeModal()});
 $('search').oninput=render;$('nationalityFilter').onchange=render;
